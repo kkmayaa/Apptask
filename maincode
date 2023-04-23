@@ -1,0 +1,100 @@
+from flask import Flask, request, jsonify
+from pymongo import MongoClient
+from bson import ObjectId
+
+# Создаем экземпляр Flask
+app = Flask(__name__)
+
+# Подключаемся к MongoDB
+client = MongoClient('mongodb://localhost:27017/')
+db = client['mydatabase']
+
+# Создаем коллекцию для хранения данных
+data_collection = db['data']
+
+# Создаем индекс для уникального поля
+data_collection.create_index([('id', 1)], unique=True)
+
+
+# CRUD операции
+
+# Создание записи
+def create_data(app):
+    @app.route('/data', methods=['POST'])
+    def create():
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No data provided in request'}), 400
+        if 'id' not in data:
+            return jsonify({'error': 'No id field in request'}), 400
+        result = data_collection.insert_one(data)
+        return jsonify({'id': str(result.inserted_id)}), 201
+
+
+
+# Получение списка записей
+def get_all_data(app):
+    @app.route('/data', methods=['GET'])
+    def get_all():
+        data = []
+        for item in data_collection.find():
+            item['_id'] = str(item['_id'])
+            data.append(item)
+        return jsonify(data), 200
+
+
+# Получение одной записи по id
+def get_data(app):
+    @app.route('/data/<id>', methods=['GET'])
+    def get(id):
+        data = data_collection.find_one({'_id': ObjectId(id)})
+        if data:
+            data['_id'] = str(data['_id'])
+            return jsonify(data), 200
+        else:
+            return jsonify({'error': 'Data not found'}), 404
+
+
+# Обновление записи по id
+def update_data(app):
+    @app.route('/data/<id>', methods=['PUT'])
+    def update(id):
+        data = request.json
+        if 'id' not in data:
+            return jsonify({'error': 'No id field in request'}), 400
+        result = data_collection.update_one({'_id': ObjectId(id)}, {'$set': data})
+        if result.modified_count == 1:
+            return jsonify({'success': 'Data updated'})
+        else:
+            return jsonify({'error': 'Data not found'}), 404
+
+
+# Удаление записи по id
+@app.route('/data/<id>', methods=['DELETE'])
+def delete_data(id):
+    result = data_collection.delete_one({'_id': ObjectId(id)})
+    if result.deleted_count == 1:
+        return jsonify({'success': 'Data deleted'})
+    else:
+        return jsonify({'error': 'Data not found'})
+
+# Получение отсортированных данных по полю
+@app.route('/data/sort/<field>', methods=['GET'])
+def sort_data(field):
+    data = []
+    for item in data_collection.find().sort(field):
+        item['_id'] = str(item['_id'])
+        data.append(item)
+    return jsonify(data)
+
+# Получение отфильтрованных данных по значению поля
+@app.route('/data/filter/<field>/<value>', methods=['GET'])
+def filter_data(field, value):
+    data = []
+    for item in data_collection.find({field: value}):
+        item['_id'] = str(item['_id'])
+        data.append(item)
+    return jsonify(data)
+
+if __name__ == '__main__':
+    app.run(debug=True)
